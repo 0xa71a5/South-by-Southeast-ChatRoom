@@ -18,18 +18,18 @@ reload(sys)
 sys.setdefaultencoding('utf-8')
 
 
-themeColor=['red','blue','green','black','gray','yellow']
+themeColor=['red','blue','green','black','gray','yellow']#聊天气泡颜色
 count=0
-listenPort=80
+listenPort=80#监听端口
 #address="www.shadowwalker.cn"
-address="127.0.0.1"
+
 sessions={}
 log=open("log.txt","a")
 
 def getTime():
     return '['+time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+'] '
 
-def SessionExsit(uid):
+def SessionExsit(uid):#判断当前uid是否已经登陆
     global sessions
     print "[+]SessionExsit(),enter"
     if(uid in sessions):
@@ -43,7 +43,7 @@ def SessionExsit(uid):
         print "[-]sessions[{}] doesnt exsit,return False exsit".format(uid)
         return False
 
-def CheckUserRegisted(username):
+def CheckUserRegisted(username):#判断用户是否已经注册
     sql=sqlite3.connect("chatroom.db")
     cur=sql.execute("select id from user where name='{}'".format(username))
     res=cur.fetchall()
@@ -51,7 +51,7 @@ def CheckUserRegisted(username):
         return True
     return False
 
-class Index(tornado.web.RequestHandler):
+class Index(tornado.web.RequestHandler):#聊天主页句柄
     def get(self):
         global listenPort
         print "[+]Enter get index"
@@ -64,7 +64,8 @@ class Index(tornado.web.RequestHandler):
             self.redirect('login.html?error=3')
             return
         self.render('chatTemplate.html',lp=listenPort,ipAddress=address)
-class VerifyHandler(tornado.web.RequestHandler):
+
+class VerifyHandler(tornado.web.RequestHandler):#身份验证页面句柄
     def get(self):
         action=self.get_argument('action')
         print '[verify]',action
@@ -79,7 +80,7 @@ class VerifyHandler(tornado.web.RequestHandler):
         sql.commit()
         sql.close()
 
-class LogoutHandler(tornado.web.RequestHandler):
+class LogoutHandler(tornado.web.RequestHandler):#退出登陆页面句柄
     def get(self):
         uid=self.get_secure_cookie('uid')
         sessions.pop(uid,1)
@@ -87,7 +88,7 @@ class LogoutHandler(tornado.web.RequestHandler):
         print "[+]after remove,new seesions=",sessions
         self.redirect('login.html')
 
-class LoginHandler(tornado.web.RequestHandler):
+class LoginHandler(tornado.web.RequestHandler):#登陆页面句柄
     def get(self):
         self.render('login.html')
     def post(self):
@@ -98,7 +99,7 @@ class LoginHandler(tornado.web.RequestHandler):
         cur=sql.execute("select id from user where name='{}' and password='{}' and valid=1".format(username,password))
         res=cur.fetchall()
         if(len(res)!=0):#密码匹配
-            salt="e53af9306298b57ffd2f63714e2e6313"
+            salt="e53af9306298b57ffd2f63714e2e6313"#加盐处理
             self.set_secure_cookie('status','logined')
             uid=md5.md5(salt+username).hexdigest()
             print "[+]login index,test if exsit session"
@@ -112,7 +113,7 @@ class LoginHandler(tornado.web.RequestHandler):
             sessions[uid]['username']=username
             sessions[uid]['sessioncount']=0
             sessions[uid]['chatroom']="mainroom"
-            self.redirect("/")
+            self.redirect("/")#重定向到聊天主页
         else:
             cur=sql.execute("select id from user where name='{}' and password='{}' and valid=0".format(username,password))
             res=cur.fetchall()
@@ -122,7 +123,7 @@ class LoginHandler(tornado.web.RequestHandler):
             else:
                 self.redirect('login.html?error=1')
 
-class RegisterHandler(tornado.web.RequestHandler):
+class RegisterHandler(tornado.web.RequestHandler):#注册页面句柄
     def get(self):
         self.render('register.html')
     def post(self):
@@ -150,7 +151,7 @@ def combineInfo(message_="[]",toWho_="everyone",id_=0,userName_="Annormous",stat
         strJ="{message:'"+message_+"',toWho:'"+toWho_+"',id:"+str(id_)+",userName:'"+userName_+"',status:'"+status_+"',color:'"+color_+"'}"
         return strJ
 
-class SocketHandler(tornado.websocket.WebSocketHandler):
+class SocketHandler(tornado.websocket.WebSocketHandler):#websocket句柄
     clients =set()
     roomContainer=dict()
     global themeColor
@@ -218,7 +219,7 @@ class SocketHandler(tornado.websocket.WebSocketHandler):
             print "[+]updateMemeber all"
             SocketHandler.send_to_all(dataToSend,roomid)
 
-    def open(self):
+    def open(self):#一个新的websocket开启了
         self.my_color_name="black"
         self.my_chatroom="1"
         #self.my_user_name='Anonymous'+str(id(self))[-6:]
@@ -247,21 +248,22 @@ class SocketHandler(tornado.websocket.WebSocketHandler):
         SocketHandler.send_to_all(dataToSend,self.my_chatroom)
         SocketHandler.update_member(self,self.my_chatroom)
 
-    def on_close(self):
+    def on_close(self):#websocket断开连接
         uid=self.get_secure_cookie('uid')
+        if(self in SocketHandler.clients):
+            SocketHandler.clients.remove(self)
+            SocketHandler.roomContainer[self.my_chatroom].remove(self)
         if(uid not in sessions):
             print "[-]ws close found no session "
-            return 
-        SocketHandler.clients.remove(self)
-        SocketHandler.roomContainer[self.my_chatroom].remove(self)
-        #sessions.pop(uid,1)#newadd1
+            return
+        sessions.pop(uid,1)#删除当前用户对应的会话
         dataToSend=combineInfo(userName_=self.my_user_name,status_='remove')
         print "[+]remove all"
         SocketHandler.send_to_all(dataToSend,self.my_chatroom)
         print str(id(self)) + ' has left'
         logStr=getTime()+self.my_user_name+' left\n'
 
-    def on_message(self, message):
+    def on_message(self, message):#websocket接收到客户端发送过来的数据
         message = json.loads(message)
         print 'on_message:',message
         if(message['status']=='chat'):
@@ -318,7 +320,7 @@ class SocketHandler(tornado.websocket.WebSocketHandler):
 
         #print sessions
 
-def checkTast():
+def checkTast():#检测连接是否断开的心跳进程
     time.sleep(1)
     count=0
     while True:
@@ -329,6 +331,7 @@ def checkTast():
 
 if __name__ == '__main__':
     global address
+    address="127.0.0.1"
     app = tornado.web.Application([
         ('/', Index),
         ('/soc', SocketHandler),
@@ -345,7 +348,7 @@ if __name__ == '__main__':
     if(len(sys.argv)!=2):
         address="127.0.0.1"
     else:
-        address="www.shadowwalker.cn"   
+        address="东南偏南.club"   
     #初始化聊天室列表
     SocketHandler.roomContainer["1"]=set()
     SocketHandler.roomContainer["2"]=set()
